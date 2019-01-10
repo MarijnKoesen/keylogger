@@ -14,10 +14,16 @@ install: all
 
 uninstall:
 	rm $(INSTALLDIR)/$(EXECUTABLE)
-	rm /Library/LaunchDaemons/$(PLIST)
+	rm ~/Library/LaunchAgents/$(PLIST)
 
 startup: install
-	cp $(PLIST) /Library/LaunchDaemons
+	cp $(PLIST) ~/Library/LaunchAgents/
 
 clean:
 	rm $(EXECUTABLE)
+
+start:
+	launchctl load ~/Library/LaunchAgents/$(PLIST)
+
+stop:
+	sudo launchctl unload ~/Library/LaunchAgents/$(PLIST)
