@@ -1,6 +1,7 @@
 #include "keylogger.h"
 
 int main(int argc, const char *argv[]) {
+    resetPresses();
 
     // Create an event tap to retrieve keypresses.
     CGEventMask eventMask = (CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventFlagsChanged));
@@ -55,17 +56,42 @@ int main(int argc, const char *argv[]) {
 
 // The following callback method is invoked on every keypress.
 CGEventRef CGEventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    if (type != kCGEventKeyDown && type != kCGEventFlagsChanged && type != kCGEventKeyUp) { return event; }
+    if (type != kCGEventKeyDown && type != kCGEventFlagsChanged && type != kCGEventKeyUp) { 
+        return event; 
+    }
 
     // Retrieve the incoming keycode.
     CGKeyCode keyCode = (CGKeyCode) CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
 
-    // Print the human readable key to the logfile.
-    fprintf(logfile, "%s", convertKeyCode(keyCode));
-    fflush(logfile);
+    // Modifier keys, like ctrl/shift/cmd etc, are triggered for every key up/down, this means
+    // we are measuring them twice. As far as I know there is not an easy way around it:
+    // - https://stackoverflow.com/questions/12536356/how-to-detect-key-up-or-key-release-for-the-capslock-key-in-os-x
+    // - https://github.com/orrt/keylogger/commit/7a0f9dfd588ba88d5217b3058e3daaf356a50ba9
+    // so instead just keep track of them, and handle them only once
+    if (type == kCGEventFlagsChanged) {
+        if (isdown[keyCode] == 1) {
+            isdown[keyCode] = 0;
+            return event;
+        } else {
+            isdown[keyCode] = 1;
+        }
+    }
+
+    presses[keyCode]++;
+
+    time_t rawtime = time(NULL);
+    struct tm * timeinfo;
+    timeinfo = localtime ( &rawtime );
+
+    if (lastLoggedMinute != timeinfo->tm_min) {
+        lastLoggedMinute = timeinfo->tm_min;
+        logPresses();
+        resetPresses();
+    }
 
     return event;
 }
+
 
 // The following method converts the key code returned by each keypress as
 // a human readable key code in const char format.
@@ -186,4 +212,28 @@ const char *convertKeyCode(int keyCode) {
         case 126: return "[up]";
     }
     return "[unknown]";
+}
+
+void logPresses() {
+    time_t rawtime = time(NULL);
+    struct tm * timeinfo;
+    timeinfo = localtime ( &rawtime );
+
+    fprintf(logfile, "[%d-%d-%d@%d:%d] ", timeinfo->tm_year+1900, timeinfo->tm_mon+1, timeinfo->tm_mday, timeinfo->tm_hour, timeinfo->tm_min);
+
+    for (int i = 0; i < 256; i++) {
+        if (presses[i] != 0) { 
+            fprintf(logfile, "%s:%d ", convertKeyCode(i), presses[i]);
+        }
+    }
+
+    fprintf(logfile, "\n");
+
+    fflush(logfile);
+}
+
+void resetPresses() {
+    for(int i = 0; i < 256; i++) {
+        presses[i] = 0;
+    } 
 }
